@@ -1801,7 +1801,8 @@
     </p>
     <div class="wall-layout">
       <div>
-        <form class="wall-form" name="studio-wall" method="POST" data-netlify="true" netlify-honeypot="bot-field" enctype="multipart/form-data" id="wallForm">
+        <iframe name="wall-frame" id="wall-frame" style="display:none;" title="wall-submit"></iframe>
+        <form class="wall-form" name="studio-wall" method="POST" data-netlify="true" netlify-honeypot="bot-field" enctype="multipart/form-data" id="wallForm" target="wall-frame">
           <input type="hidden" name="form-name" value="studio-wall">
           <p style="display:none;"><label>Don't fill this: <input name="bot-field"></label></p>
           <h3>Post to the Studio Wall</h3>
@@ -1974,7 +1975,8 @@
     <p class="section-body">
       Whether you are ready to lead a zone or simply want to bring one arrangement on the day — there is a place for you in this installation. Tell us who you are and what you are drawn to.
     </p>
-    <form class="join-form" name="join-us" method="POST" data-netlify="true" netlify-honeypot="bot-field" enctype="multipart/form-data">
+    <iframe name="join-frame" id="join-frame" style="display:none;" title="join-submit"></iframe>
+    <form class="join-form" name="join-us" method="POST" data-netlify="true" netlify-honeypot="bot-field" enctype="multipart/form-data" target="join-frame">
       <input type="hidden" name="form-name" value="join-us">
       <p style="display:none;"><label>Don't fill this: <input name="bot-field"></label></p>
       <div class="form-group">
@@ -2124,50 +2126,45 @@
     return valid;
   }
 
-  // ── Submit form with XHR + progress bars ──
-  function submitForm(form, successId) {
+  // ── Submit form via hidden iframe (preserves Netlify file CDN links in email) ──
+  function submitForm(form, iframeId, successId) {
+    const iframe   = document.getElementById(iframeId);
     const slots    = form.querySelectorAll('.file-slot');
     const hasFiles = [...slots].some(s => s.querySelector('input[type=file]').files[0]);
 
-    // Show progress bars for slots with files
+    // Disable submit button to prevent double-submit
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+    // Animate progress bars (simulated — real upload happens in the iframe)
+    const timers = [];
     slots.forEach(slot => {
       if (slot.querySelector('input[type=file]').files[0]) {
         slot.querySelector('.progress-wrap').style.display = 'block';
-      }
-    });
-
-    const formData = new FormData(form);
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/');
-
-    xhr.upload.addEventListener('progress', e => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100) + '%';
-        slots.forEach(slot => {
-          if (slot.querySelector('input[type=file]').files[0])
-            slot.querySelector('.progress-fill').style.width = pct;
-        });
+        let pct = 0;
+        const iv = setInterval(() => {
+          pct = Math.min(pct + 5 + Math.random() * 7, 88);
+          slot.querySelector('.progress-fill').style.width = pct + '%';
+        }, 180);
+        timers.push({ slot, iv });
       }
     });
 
     const onDone = () => {
-      // Complete all bars + show file done
-      slots.forEach(slot => {
-        if (slot.querySelector('input[type=file]').files[0]) {
-          slot.querySelector('.progress-fill').style.width = '100%';
-          setTimeout(() => { slot.querySelector('.file-done').style.display = 'block'; }, 200);
-        }
+      iframe.onload = null;
+      timers.forEach(({ slot, iv }) => {
+        clearInterval(iv);
+        slot.querySelector('.progress-fill').style.width = '100%';
+        setTimeout(() => { slot.querySelector('.file-done').style.display = 'block'; }, 200);
       });
       setTimeout(() => {
-        const successEl = document.getElementById(successId);
-        successEl.style.display = 'flex';
+        document.getElementById(successId).style.display = 'flex';
         form.style.display = 'none';
-      }, hasFiles ? 600 : 200);
+      }, hasFiles ? 700 : 300);
     };
 
-    xhr.addEventListener('load', onDone);
-    xhr.addEventListener('error', onDone); // Netlify often returns 200 but triggers error — show success anyway
-    xhr.send(formData);
+    iframe.onload = onDone;
+    form.submit(); // Standard HTML form POST into hidden iframe → Netlify includes file CDN links in email
   }
 
   // ── Studio Wall form ──
@@ -2179,7 +2176,7 @@
         { id: 'w-name', errId: 'w-name-err', check: f => f.value.trim() !== '', msg: 'Please enter your name.' },
         { id: 'w-idea', errId: 'w-idea-err', check: f => f.value.trim() !== '', msg: 'Please describe your idea.' }
       ]);
-      if (ok) submitForm(wallForm, 'wall-success');
+      if (ok) submitForm(wallForm, 'wall-frame', 'wall-success');
     });
   }
 
@@ -2192,7 +2189,7 @@
         { id: 'j-name',  errId: 'j-name-err',  check: f => f.value.trim() !== '', msg: 'Please enter your name.' },
         { id: 'j-email', errId: 'j-email-err', check: f => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.value), msg: 'Please enter a valid email address.' }
       ]);
-      if (ok) submitForm(joinForm, 'j-success');
+      if (ok) submitForm(joinForm, 'join-frame', 'j-success');
     });
   }
 
